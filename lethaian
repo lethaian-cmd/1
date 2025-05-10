@@ -1,0 +1,116 @@
+-- Thông báo khởi động
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Lê Thái An",
+    Text = "Đang Tải...",
+})
+wait(2)
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Lê Thái An",
+    Text = "Đang Xác Minh Danh Tính",
+})
+wait(5)
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Lê Thái An",
+    Text = "Đang Thiết Lập...",
+})
+wait(2)
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Lê Thái An",
+    Text = "Chạy Thành Công !",
+})
+wait(0.5)
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Lê Thái An",
+    Text = "follow my main account: [👑]duydeohack",
+})
+
+-- Biến và dịch vụ
+local player = game.Players.LocalPlayer
+local camera = game.Workspace.CurrentCamera
+local runService = game:GetService("RunService")
+local userInputService = game:GetService("UserInputService")
+
+local aimSpeed = 0.1
+local isAimAssistEnabled = false
+local predictionFactor = 5.4
+local currentTarget = nil
+local smoothingFactor = 0.02
+
+-- Hàm dự đoán vị trí mục tiêu (Head)
+local function predictTargetPosition(target, deltaTime)
+    local targetPosition = target.Head.Position
+    local targetVelocity = target:FindFirstChild("Humanoid") and target.HumanoidRootPart.Velocity or Vector3.new()
+    local predictedPosition = targetPosition + targetVelocity * predictionFactor * deltaTime
+    return predictedPosition
+end
+
+-- Hàm điều chỉnh camera ngắm mục tiêu
+local function aimAtTarget()
+    if currentTarget and currentTarget.Parent then
+        local predictedPosition = predictTargetPosition(currentTarget, runService.RenderStepped:Wait())
+        local lookVector = (predictedPosition - camera.CFrame.Position).Unit
+        local smoothedLookVector = (1 - smoothingFactor) * lookVector + smoothingFactor * camera.CFrame.LookVector
+        local newCFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + aimSpeed * smoothedLookVector)
+        camera.CFrame = newCFrame
+    else
+        currentTarget = nil
+        isAimAssistEnabled = false
+    end
+end
+
+-- Tìm người chơi gần chuột nhất (Head)
+local function findClosestPlayerToMouse()
+    local mousePos = userInputService:GetMouseLocation()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, object in pairs(game.Players:GetPlayers()) do
+        if object ~= player and object.Character and object.Character:FindFirstChild("Humanoid") and object.Character:FindFirstChild("Head") then
+            local targetScreenPos, onScreen = camera:WorldToScreenPoint(object.Character.Head.Position)
+            if onScreen then
+                local distance = (Vector2.new(targetScreenPos.X, targetScreenPos.Y) - mousePos).Magnitude
+                if distance < shortestDistance then
+                    closestPlayer = object.Character
+                    shortestDistance = distance
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+-- Bắt sự kiện phím bấm
+local function onKeyPress(input, gameProcessedEvent)
+    if not gameProcessedEvent then
+        if input.KeyCode == Enum.KeyCode.C then
+            isAimAssistEnabled = not isAimAssistEnabled
+            if isAimAssistEnabled then
+                currentTarget = findClosestPlayerToMouse()
+            else
+                currentTarget = nil
+            end
+            print("Aim Assist Toggled:", isAimAssistEnabled)
+        end
+    end
+end
+
+-- Xử lý khi mục tiêu chết
+local function onCharacterAdded(character)
+    character:WaitForChild("Humanoid").Died:Connect(function()
+        if currentTarget == character then
+            currentTarget = nil
+        end
+    end)
+end
+
+-- Kết nối sự kiện
+userInputService.InputBegan:Connect(onKeyPress)
+player.CharacterAdded:Connect(onCharacterAdded)
+
+-- Cập nhật liên tục mỗi frame
+runService.RenderStepped:Connect(function(deltaTime)
+    if isAimAssistEnabled then
+        aimAtTarget()
+    end
+end)

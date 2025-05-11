@@ -1,0 +1,73 @@
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Cài đặt
+local hitboxEnabled = false
+local hitboxSize = Vector3.new(10, 10, 10)
+local originalSizes = {}
+
+-- 🌟 HITBOX EXPANDER
+local function expandHitboxes()
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			local hrp = player.Character.HumanoidRootPart
+
+			if not originalSizes[player] then
+				-- Lưu lại thông tin ban đầu
+				originalSizes[player] = {
+					Size = hrp.Size,
+					Transparency = hrp.Transparency,
+					Material = hrp.Material,
+					Color = hrp.Color,
+					CanCollide = hrp.CanCollide
+				}
+			end
+
+			-- Thay đổi hitbox
+			hrp.Size = hitboxSize
+			hrp.Transparency = 0.8
+			hrp.Material = Enum.Material.Neon
+			hrp.Color = Color3.fromRGB(255, 0, 0)
+			hrp.CanCollide = false
+		end
+	end
+end
+
+local function resetHitboxes()
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			local hrp = player.Character.HumanoidRootPart
+
+			if originalSizes[player] then
+				local original = originalSizes[player]
+				hrp.Size = original.Size
+				hrp.Transparency = original.Transparency
+				hrp.Material = original.Material
+				hrp.Color = original.Color
+				hrp.CanCollide = original.CanCollide
+			end
+		end
+	end
+
+	-- Xóa dữ liệu sau khi reset hoàn tất
+	table.clear(originalSizes)
+end
+
+-- 🌟 GÁN PHÍM
+UIS.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+
+	if input.KeyCode == Enum.KeyCode.C then
+		hitboxEnabled = not hitboxEnabled
+		if hitboxEnabled then
+			expandHitboxes()
+			print("✅ Hitbox Expanded")
+		else
+			resetHitboxes()
+			print("❌ Hitbox Reset & Cleaned")
+		end
+	end
+end)
+
+print("✅ script by le thai an")

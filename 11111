@@ -1,33 +1,21 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local hrp = character:WaitForChild("HumanoidRootPart")
-
--- Float part
-local floatPart = Instance.new("Part")
-floatPart.Size = Vector3.new(6, 1, 6)
-floatPart.Anchored = true
-floatPart.Transparency = 1
-floatPart.CanCollide = true
-floatPart.Parent = workspace
-
--- GUI
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 gui.Name = "FloatUI"
 
+-- Tạo GUI
 local frame = Instance.new("Frame", gui)
 frame.Size = UDim2.new(0, 160, 0, 60)
 frame.Position = UDim2.new(0.5, -80, 0.8, 0)
 frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-frame.BorderSizePixel = 0
 frame.BackgroundTransparency = 0.2
+frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.ClipsDescendants = true
-frame.AutomaticSize = Enum.AutomaticSize.None
-frame.AnchorPoint = Vector2.new(0.5, 0)
 
 local title = Instance.new("TextLabel", frame)
 title.Text = "Float"
@@ -42,7 +30,6 @@ toggle.Size = UDim2.new(0, 50, 0, 25)
 toggle.Position = UDim2.new(0.65, 0, 0.3, 0)
 toggle.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 toggle.BorderSizePixel = 0
-toggle.BackgroundTransparency = 0.2
 toggle.ClipsDescendants = true
 toggle.ZIndex = 2
 
@@ -52,35 +39,66 @@ circle.Position = UDim2.new(0, 1, 0, 1)
 circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 circle.BorderSizePixel = 0
 circle.ZIndex = 3
-circle.BackgroundTransparency = 0
-circle.AnchorPoint = Vector2.new(0, 0)
 
-local UIS = game:GetService("UserInputService")
-local tween = game:GetService("TweenService")
+-- Float hệ thống
 local floatEnabled = false
+local floatPart
 local floatConnection
 
-local function toggleFloat()
-    floatEnabled = not floatEnabled
-    if floatEnabled then
-        tween:Create(toggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 170, 255)}):Play()
-        tween:Create(circle, TweenInfo.new(0.2), {Position = UDim2.new(1, -24, 0, 1)}):Play()
-        floatConnection = RunService.RenderStepped:Connect(function()
-            if hrp and hrp.Parent then
-                floatPart.CFrame = hrp.CFrame * CFrame.new(0, -3.5, 0)
-            end
-        end)
-    else
-        tween:Create(toggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 80, 80)}):Play()
-        tween:Create(circle, TweenInfo.new(0.2), {Position = UDim2.new(0, 1, 0, 1)}):Play()
-        if floatConnection then
-            floatConnection:Disconnect()
-        end
-    end
+local function setupFloat()
+	local character = player.Character or player.CharacterAdded:Wait()
+	local hrp = character:WaitForChild("HumanoidRootPart")
+
+	floatPart = Instance.new("Part")
+	floatPart.Size = Vector3.new(6, 1, 6)
+	floatPart.Anchored = true
+	floatPart.Transparency = 1
+	floatPart.CanCollide = true
+	floatPart.Parent = workspace
+
+	if floatEnabled then
+		floatConnection = RunService.RenderStepped:Connect(function()
+			if hrp and hrp.Parent then
+				floatPart.CFrame = hrp.CFrame * CFrame.new(0, -3.5, 0)
+			end
+		end)
+	end
 end
 
+-- Toggle Float
+local function toggleFloat()
+	floatEnabled = not floatEnabled
+
+	if floatEnabled then
+		TweenService:Create(toggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 170, 255)}):Play()
+		TweenService:Create(circle, TweenInfo.new(0.2), {Position = UDim2.new(1, -24, 0, 1)}):Play()
+		
+		if floatConnection then floatConnection:Disconnect() end
+		setupFloat()
+	else
+		TweenService:Create(toggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 80, 80)}):Play()
+		TweenService:Create(circle, TweenInfo.new(0.2), {Position = UDim2.new(0, 1, 0, 1)}):Play()
+		
+		if floatConnection then
+			floatConnection:Disconnect()
+		end
+		if floatPart then
+			floatPart:Destroy()
+		end
+	end
+end
+
+-- Bấm toggle
 toggle.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        toggleFloat()
-    end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		toggleFloat()
+	end
+end)
+
+-- Khi reset nhân vật, tự bật lại nếu đang bật
+player.CharacterAdded:Connect(function()
+	if floatEnabled then
+		task.wait(1)
+		setupFloat()
+	end
 end)

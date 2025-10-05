@@ -1,0 +1,87 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+local SpeedMultiplier = 3
+local SpeedEnabled = false
+local SpeedConnection
+
+-- GUI
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.Name = "SpeedBoostUI"
+gui.ResetOnSpawn = false
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 250, 0, 150)
+frame.Position = UDim2.new(0.35, 0, 0.35, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 40)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.Text = "Speed Tool⚙️"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextScaled = true
+
+local input = Instance.new("TextBox", frame)
+input.PlaceholderText = "Tốc độ VD: 3"
+input.Text = ""
+input.Size = UDim2.new(0.8, 0, 0, 35)
+input.Position = UDim2.new(0.1, 0, 0.4, 0)
+input.Font = Enum.Font.Gotham
+input.TextScaled = true
+input.TextColor3 = Color3.fromRGB(255, 255, 255)
+input.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+input.BorderSizePixel = 0
+
+local toggle = Instance.new("TextButton", frame)
+toggle.Size = UDim2.new(0.8, 0, 0, 35)
+toggle.Position = UDim2.new(0.1, 0, 0.7, 0)
+toggle.BackgroundColor3 = Color3.fromRGB(60, 130, 255)
+toggle.Font = Enum.Font.GothamBold
+toggle.Text = "ON"
+toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggle.TextScaled = true
+
+-- Function: Start speed boost on character
+local function startBoost(char)
+	if SpeedConnection then SpeedConnection:Disconnect() end
+	hrp = char:WaitForChild("HumanoidRootPart")
+
+	SpeedConnection = RunService.RenderStepped:Connect(function()
+		local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+		if humanoid and SpeedEnabled then
+			local moveDir = humanoid.MoveDirection
+			if moveDir.Magnitude > 0 then
+				hrp.CFrame = hrp.CFrame + (moveDir.Unit * SpeedMultiplier)
+			end
+		end
+	end)
+end
+
+-- Toggle button
+toggle.MouseButton1Click:Connect(function()
+	local val = tonumber(input.Text)
+	if val then
+		SpeedMultiplier = val
+	end
+
+	SpeedEnabled = not SpeedEnabled
+	toggle.Text = SpeedEnabled and "OFF" or "ON"
+end)
+
+-- Lần đầu gọi
+startBoost(character)
+
+-- Khi respawn
+player.CharacterAdded:Connect(function(char)
+	character = char
+	startBoost(char)
+end)

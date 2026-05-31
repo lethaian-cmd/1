@@ -1,0 +1,1063 @@
+--[[
+    ╔══════════════════════════════════════════════════════════╗
+    ║             ThaianDev CDVN | Premium 🔯                  ║
+    ║       STAND ENGINE REMASTERED V16 — GOD TIER UI          ║
+    ║  s / r / <name>  |  Tele: Behind / Orbit / Under / Up   ║
+    ╚══════════════════════════════════════════════════════════╝
+--]]
+
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local Lighting         = game:GetService("Lighting")
+
+local LP     = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- ── UI PARENT ──────────────────────────────────────────────
+local TP = nil
+pcall(function()
+    TP = game:GetService("CoreGui"):FindFirstChild("RobloxGui") or game:GetService("CoreGui")
+end)
+if not TP then TP = LP:WaitForChild("PlayerGui", 15) end
+if TP:FindFirstChild("ThaianDev_CDVN") then TP["ThaianDev_CDVN"]:Destroy(); task.wait(0.1) end
+
+local SG = Instance.new("ScreenGui")
+SG.Name = "ThaianDev_CDVN"; SG.ResetOnSpawn = false
+SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; SG.Parent = TP
+
+-- ── DRAGGABLE ──────────────────────────────────────────────
+local function mkDrag(f, h)
+    h = h or f
+    local drag, di, ds, sp
+    h.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true; ds = i.Position; sp = f.Position
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then drag = false end
+            end)
+        end
+    end)
+    h.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then di = i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i == di and drag then
+            local d = i.Position - ds
+            TweenService:Create(f, TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+            }):Play()
+        end
+    end)
+end
+
+-- ── STATE ──────────────────────────────────────────────────
+local S = {
+    AutoAttack = false, UltraAntiLag = false, AutoHeal = false,
+    ESPName = false, ESPHealth = false, ESPHighlight = false,
+    SpinbotEnabled = false, SpinSpeed = 25,
+    LaserLockEnabled = false, TeleportActive = false,
+    TeleMode = 1,        -- 1=Behind 2=Orbit 3=Under 4=Up
+    TeleTarget = nil,    -- Player object (not char)
+    OrbitRadius = 4.2, OrbitSpeed = 12,
+    StandEnabled = false, MasterPlayer = nil,
+    StandState = "Idle", KillTargetChar = nil,
+    HitboxEnabled = false, HitboxSize = 10
+}
+
+local OrbitAngle = 0
+local StandOrbitAngle = 0
+local ChatConn = nil
+local originalSizes = {}
+
+-- ── HELPERS ────────────────────────────────────────────────
+local function findPlayerBySearch(raw)
+    local q = string.lower(string.gsub(raw, "^@", ""))
+    if q == "" then return nil end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then
+            if string.find(string.lower(p.Name), q, 1, true)
+            or string.find(string.lower(p.DisplayName), q, 1, true) then
+                return p
+            end
+        end
+    end
+    return nil
+end
+
+local function getCharSafe(player)
+    local c = player.Character or workspace:FindFirstChild(player.Name)
+    if c and c:FindFirstChild("HumanoidRootPart") then return c end
+    local t = 0
+    while t < 3 do
+        task.wait(0.1); t = t + 0.1
+        c = player.Character or workspace:FindFirstChild(player.Name)
+        if c and c:FindFirstChild("HumanoidRootPart") then return c end
+    end
+    return nil
+end
+
+local function findBandage()
+    local function m(n)
+        n = string.lower(n)
+        return string.find(n,"băng") or string.find(n,"bandage")
+            or string.find(n,"heal") or string.find(n,"med")
+    end
+    for _, it in pairs(LP.Backpack:GetChildren()) do
+        if it:IsA("Tool") and m(it.Name) then return it end
+    end
+    if LP.Character then
+        for _, it in pairs(LP.Character:GetChildren()) do
+            if it:IsA("Tool") and m(it.Name) then return it end
+        end
+    end
+    return nil
+end
+
+-- ── ANIMATED NOTIFICATION ─────────────────────────────────
+local function showNotif(text, color)
+    color = color or Color3.fromRGB(255, 228, 110)
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0, 0, 0, 44)
+    n.Position = UDim2.new(0.5, 0, 0.1, 0)
+    n.AnchorPoint = Vector2.new(0.5, 0)
+    n.BackgroundColor3 = Color3.fromRGB(10, 4, 22)
+    n.BorderSizePixel = 0; n.ZIndex = 40; n.Parent = SG; n.ClipsDescendants = true
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 10)
+    local ns = Instance.new("UIStroke", n)
+    ns.Color = Color3.fromRGB(160, 30, 220); ns.Thickness = 1.6
+    local bar = Instance.new("Frame"); bar.Size = UDim2.new(1, 0, 0, 3)
+    bar.Position = UDim2.new(0, 0, 1, -3); bar.BackgroundColor3 = color
+    bar.BorderSizePixel = 0; bar.ZIndex = 41; bar.Parent = n
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 2)
+    local bg = Instance.new("UIGradient", bar)
+    bg.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(200, 20, 20)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(140, 0, 255))
+    }
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1, -28, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0); lbl.BackgroundTransparency = 1
+    lbl.Text = text; lbl.Font = Enum.Font.BuilderSansBold; lbl.TextSize = 13
+    lbl.TextColor3 = color; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 42; lbl.Parent = n
+    TweenService:Create(n, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        {Size = UDim2.new(0, 380, 0, 44)}):Play()
+    task.delay(3.2, function()
+        TweenService:Create(n, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
+            {Size = UDim2.new(0, 0, 0, 44)}):Play()
+        task.wait(0.2); pcall(function() n:Destroy() end)
+    end)
+end
+
+local SelectorBtn, StatusLbl
+
+local function revokeMaster()
+    if ChatConn then ChatConn:Disconnect(); ChatConn = nil end
+    S.MasterPlayer = nil; S.StandState = "Idle"; S.KillTargetChar = nil
+    local c = LP.Character
+    if c then
+        for _, p in pairs(c:GetChildren()) do if p:IsA("BasePart") then p.CanCollide = true end end
+    end
+    if SelectorBtn then SelectorBtn.Text = "Chọn Chủ Nhân (Master)..." end
+    if StatusLbl then
+        StatusLbl.Text = "Trạng thái: Chưa trao quyền"
+        StatusLbl.TextColor3 = Color3.fromRGB(160, 148, 172)
+    end
+    showNotif("🔓 Đã hủy quyền Chủ Nhân.", Color3.fromRGB(255, 100, 120))
+end
+
+-- ── HITBOX CONTROL LOGIC ──────────────────────────────────
+local function updateHitboxes()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LP and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            if S.HitboxEnabled then
+                if not originalSizes[player] then
+                    originalSizes[player] = {
+                        Size = hrp.Size,
+                        Transparency = hrp.Transparency,
+                        Material = hrp.Material,
+                        Color = hrp.Color,
+                        CanCollide = hrp.CanCollide
+                    }
+                end
+                hrp.Size = Vector3.new(S.HitboxSize, S.HitboxSize, S.HitboxSize)
+                hrp.Transparency = 0.8
+                hrp.Material = Enum.Material.Neon
+                hrp.Color = Color3.fromRGB(255, 0, 0)
+                hrp.CanCollide = false
+            else
+                if originalSizes[player] then
+                    local original = originalSizes[player]
+                    hrp.Size = original.Size
+                    hrp.Transparency = original.Transparency
+                    hrp.Material = original.Material
+                    hrp.Color = original.Color
+                    hrp.CanCollide = original.CanCollide
+                end
+            end
+        end
+    end
+    if not S.HitboxEnabled then
+        table.clear(originalSizes)
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if S.HitboxEnabled then
+        updateHitboxes()
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════
+--  MAIN MENU  600 × 430
+-- ══════════════════════════════════════════════════════════
+local MM = Instance.new("Frame"); MM.Name = "MainMenu"
+MM.Size = UDim2.new(0, 600, 0, 430)
+MM.Position = UDim2.new(0.5, -300, 0.5, -215)
+MM.BackgroundColor3 = Color3.fromRGB(8, 4, 16)
+MM.BorderSizePixel = 0; MM.ClipsDescendants = true; MM.Parent = SG
+mkDrag(MM)
+
+local GENGAR_ID = "rbxassetid://13410222370"
+local Bg = Instance.new("ImageLabel"); Bg.Size = UDim2.new(1,0,1,0); Bg.Image = GENGAR_ID
+Bg.ImageTransparency = 0.40; Bg.ScaleType = Enum.ScaleType.Crop
+Bg.BackgroundTransparency = 1; Bg.ZIndex = 0; Bg.Parent = MM
+
+local Dim = Instance.new("Frame"); Dim.Size = UDim2.new(1,0,1,0)
+Dim.BackgroundColor3 = Color3.fromRGB(5, 2, 12); Dim.BackgroundTransparency = 0.28
+Dim.BorderSizePixel = 0; Dim.ZIndex = 1; Dim.Parent = MM
+
+Instance.new("UICorner", MM).CornerRadius = UDim.new(0, 14)
+local MStr = Instance.new("UIStroke", MM); MStr.Thickness = 2.6
+
+local _bHue = 0
+RunService.Heartbeat:Connect(function(dt)
+    _bHue = (_bHue + dt * 45) % 360
+    MStr.Color = Color3.fromHSV(_bHue / 360, 0.82, 0.98)
+end)
+
+local Hdr = Instance.new("Frame"); Hdr.Size = UDim2.new(1, 0, 0, 56)
+Hdr.BackgroundColor3 = Color3.fromRGB(8, 3, 18); Hdr.BackgroundTransparency = 0.04
+Hdr.BorderSizePixel = 0; Hdr.ZIndex = 2; Hdr.Parent = MM
+Instance.new("UICorner", Hdr).CornerRadius = UDim.new(0, 14)
+local hG = Instance.new("UIGradient", Hdr)
+hG.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 10, 10)),
+    ColorSequenceKeypoint.new(0.48, Color3.fromRGB(70, 8, 120)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 3, 18))
+}
+
+local TitleLbl = Instance.new("TextLabel"); TitleLbl.Size = UDim2.new(1, -120, 0, 34)
+TitleLbl.Position = UDim2.new(0, 18, 0, 7); TitleLbl.Text = "ThaianDev CDVN | Premium 🔯"
+TitleLbl.Font = Enum.Font.BuilderSansBold; TitleLbl.TextSize = 18
+TitleLbl.TextColor3 = Color3.fromRGB(255, 242, 255); TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+TitleLbl.BackgroundTransparency = 1; TitleLbl.ZIndex = 3; TitleLbl.Parent = Hdr
+local TStr = Instance.new("UIStroke", TitleLbl); TStr.Color = Color3.fromRGB(200, 60, 255); TStr.Thickness = 0.5
+
+local SubLbl = Instance.new("TextLabel"); SubLbl.Size = UDim2.new(1, -120, 0, 14)
+SubLbl.Position = UDim2.new(0, 18, 0, 39)
+SubLbl.Text = "V16  ·  s / r / <name>  ·  Tele: Behind / Orbit / Under / Up"
+SubLbl.Font = Enum.Font.BuilderSans; SubLbl.TextSize = 10
+SubLbl.TextColor3 = Color3.fromRGB(178, 145, 228); SubLbl.TextXAlignment = Enum.TextXAlignment.Left
+SubLbl.BackgroundTransparency = 1; SubLbl.ZIndex = 3; SubLbl.Parent = Hdr
+
+local MinBtn = Instance.new("TextButton"); MinBtn.Size = UDim2.new(0, 34, 0, 34)
+MinBtn.Position = UDim2.new(1, -46, 0, 11); MinBtn.BackgroundColor3 = Color3.fromRGB(55, 18, 85)
+MinBtn.Text = "×"; MinBtn.TextSize = 24; MinBtn.Font = Enum.Font.BuilderSansBold
+MinBtn.TextColor3 = Color3.fromRGB(255, 150, 255); MinBtn.ZIndex = 3; MinBtn.Parent = Hdr
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(1, 0)
+Instance.new("UIStroke", MinBtn).Color = Color3.fromRGB(180, 40, 240)
+
+local LogoBtn = Instance.new("TextButton"); LogoBtn.Size = UDim2.new(0, 68, 0, 68)
+LogoBtn.BackgroundColor3 = Color3.fromRGB(10, 4, 22); LogoBtn.Text = "🔯"
+LogoBtn.TextSize = 32; LogoBtn.Visible = false; LogoBtn.Parent = SG
+Instance.new("UICorner", LogoBtn).CornerRadius = UDim.new(1, 0)
+local LStr = Instance.new("UIStroke", LogoBtn); LStr.Color = Color3.fromRGB(200, 50, 255); LStr.Thickness = 2.2
+mkDrag(LogoBtn)
+
+MinBtn.MouseButton1Click:Connect(function()
+    MM.Visible = false
+    LogoBtn.Position = UDim2.new(0, MM.AbsolutePosition.X + 270, 0, MM.AbsolutePosition.Y + 198)
+    LogoBtn.Visible = true
+end)
+LogoBtn.MouseButton1Click:Connect(function() LogoBtn.Visible = false; MM.Visible = true end)
+
+-- ── TAB SYSTEM ────────────────────────────────────────────
+local TabBar = Instance.new("Frame"); TabBar.Size = UDim2.new(0, 138, 1, -56)
+TabBar.Position = UDim2.new(0, 0, 0, 56)
+TabBar.BackgroundColor3 = Color3.fromRGB(6, 3, 14); TabBar.BackgroundTransparency = 0.72
+TabBar.ZIndex = 2; TabBar.Parent = MM
+local TLL = Instance.new("UIListLayout", TabBar); TLL.Padding = UDim.new(0, 6)
+TLL.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TLL.VerticalAlignment = Enum.VerticalAlignment.Top
+local TPP = Instance.new("UIPadding", TabBar); TPP.PaddingTop = UDim.new(0, 10)
+
+local CF = Instance.new("Frame"); CF.Size = UDim2.new(1, -138, 1, -56)
+CF.Position = UDim2.new(0, 138, 0, 56)
+CF.BackgroundTransparency = 1; CF.ZIndex = 2; CF.Parent = MM
+
+local function mkScrollTab(vis)
+    local sf = Instance.new("ScrollingFrame"); sf.Size = UDim2.new(1,0,1,0)
+    sf.BackgroundTransparency = 1; sf.CanvasSize = UDim2.new(0,0,2.4,0)
+    sf.ScrollBarThickness = 2; sf.Visible = vis; sf.ZIndex = 2; sf.Parent = CF
+    local ll = Instance.new("UIListLayout", sf); ll.Padding = UDim.new(0, 9)
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    local pp = Instance.new("UIPadding", sf); pp.PaddingTop = UDim.new(0, 10)
+    return sf
+end
+
+local TabMain = mkScrollTab(true)
+local TabESP  = mkScrollTab(false)
+local TabTac  = mkScrollTab(false)
+local AllTabs = {TabMain, TabESP, TabTac}
+
+local function mkTabBtn(icon, label, tab)
+    local b = Instance.new("TextButton"); b.Size = UDim2.new(0, 125, 0, 44)
+    b.BackgroundColor3 = Color3.fromRGB(20, 10, 38); b.BackgroundTransparency = 0.38
+    b.Text = icon .. "  " .. label; b.Font = Enum.Font.BuilderSansBold; b.TextSize = 12
+    b.TextColor3 = Color3.fromRGB(200, 175, 228); b.ZIndex = 3; b.Parent = TabBar
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+    local bs = Instance.new("UIStroke", b); bs.Color = Color3.fromRGB(85, 28, 140); bs.Thickness = 1.1
+    b.MouseButton1Click:Connect(function()
+        for _, t in pairs(AllTabs) do t.Visible = false end; tab.Visible = true
+        b.BackgroundColor3 = Color3.fromRGB(110, 28, 185); b.BackgroundTransparency = 0
+        bs.Color = Color3.fromRGB(210, 80, 255); bs.Thickness = 1.6
+    end)
+end
+mkTabBtn("⚡", "Main Logic", TabMain)
+mkTabBtn("👁", "Visual ESP",  TabESP)
+mkTabBtn("🔯", "Tactical V16", TabTac)
+
+-- ── TOGGLE BUILDER ─────────────────────────────────────────
+local function mkToggle(parent, label, cb)
+    local tf = Instance.new("Frame"); tf.Size = UDim2.new(0.93, 0, 0, 50)
+    tf.BackgroundColor3 = Color3.fromRGB(14, 7, 26); tf.BackgroundTransparency = 0.42
+    tf.ZIndex = 2; tf.Parent = parent
+    Instance.new("UICorner", tf).CornerRadius = UDim.new(0, 10)
+    local ts = Instance.new("UIStroke", tf); ts.Color = Color3.fromRGB(75, 22, 115); ts.Thickness = 1.1
+    local tg = Instance.new("UIGradient", tf)
+    tg.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 14, 46)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 6, 24))
+    }; tg.Rotation = 45
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(0.68, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0); lbl.Text = label
+    lbl.Font = Enum.Font.BuilderSansBold; lbl.TextSize = 13
+    lbl.TextColor3 = Color3.fromRGB(240, 224, 255); lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1; lbl.ZIndex = 3; lbl.Parent = tf
+    local b = Instance.new("TextButton"); b.Size = UDim2.new(0, 56, 0, 28)
+    b.Position = UDim2.new(1, -68, 0.5, -14); b.BackgroundColor3 = Color3.fromRGB(42, 26, 68)
+    b.Text = ""; b.ZIndex = 3; b.Parent = tf
+    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+    local ind = Instance.new("Frame"); ind.Size = UDim2.new(0, 22, 0, 22)
+    ind.Position = UDim2.new(0, 3, 0.5, -11); ind.BackgroundColor3 = Color3.fromRGB(135, 115, 165)
+    ind.ZIndex = 4; ind.Parent = b
+    Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
+    local active = false
+    b.MouseButton1Click:Connect(function()
+        active = not active
+        local tp = active and UDim2.new(1, -25, 0.5, -11) or UDim2.new(0, 3, 0.5, -11)
+        local tc = active and Color3.fromRGB(135, 28, 245) or Color3.fromRGB(42, 26, 68)
+        local ic = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(135, 115, 165)
+        TweenService:Create(b,   TweenInfo.new(0.15, Enum.EasingStyle.Back), {BackgroundColor3 = tc}):Play()
+        TweenService:Create(ind, TweenInfo.new(0.15, Enum.EasingStyle.Back), {Position = tp, BackgroundColor3 = ic}):Play()
+        TweenService:Create(ts,  TweenInfo.new(0.15), {Color = active and Color3.fromRGB(180, 55, 255) or Color3.fromRGB(75, 22, 115)}):Play()
+        cb(active)
+    end)
+end
+
+-- ── PLAYER ROW ─────────────────────────────────────────────
+local function mkPlayerRow(p, parent, atkCB, retCB)
+    local row = Instance.new("Frame"); row.Size = UDim2.new(1, -8, 0, 46)
+    row.BackgroundColor3 = Color3.fromRGB(20, 10, 36); row.BackgroundTransparency = 0.22
+    row.Parent = parent
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+    local rs = Instance.new("UIStroke", row); rs.Color = Color3.fromRGB(65, 22, 105); rs.Thickness = 0.9
+    local rg = Instance.new("UIGradient", row)
+    rg.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(35, 16, 58)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 8, 32))
+    }; rg.Rotation = 90
+
+    local nl = Instance.new("TextLabel"); nl.Size = UDim2.new(0, 108, 0, 20)
+    nl.Position = UDim2.new(0, 8, 0, 4); nl.BackgroundTransparency = 1
+    nl.Text = p.DisplayName; nl.Font = Enum.Font.BuilderSansBold; nl.TextSize = 11
+    nl.TextColor3 = Color3.fromRGB(242, 224, 255); nl.TextXAlignment = Enum.TextXAlignment.Left
+    nl.TextTruncate = Enum.TextTruncate.AtEnd; nl.Parent = row
+
+    local ul = Instance.new("TextLabel"); ul.Size = UDim2.new(0, 108, 0, 14)
+    ul.Position = UDim2.new(0, 8, 0, 24); ul.BackgroundTransparency = 1
+    ul.Text = "@" .. p.Name; ul.Font = Enum.Font.BuilderSans; ul.TextSize = 9
+    ul.TextColor3 = Color3.fromRGB(150, 135, 175); ul.TextXAlignment = Enum.TextXAlignment.Left
+    ul.TextTruncate = Enum.TextTruncate.AtEnd; ul.Parent = row
+
+    local atk = Instance.new("TextButton"); atk.Size = UDim2.new(0, 58, 0, 32)
+    atk.Position = UDim2.new(1, -120, 0.5, -16); atk.BackgroundColor3 = Color3.fromRGB(130, 16, 16)
+    atk.Text = "⚔ ATK"; atk.Font = Enum.Font.BuilderSansBold; atk.TextSize = 11
+    atk.TextColor3 = Color3.fromRGB(255, 212, 212); atk.Parent = row
+    Instance.new("UICorner", atk).CornerRadius = UDim.new(0, 7)
+    Instance.new("UIStroke", atk).Color = Color3.fromRGB(220, 45, 45)
+    atk.MouseButton1Click:Connect(function() if atkCB then atkCB(p) end end)
+
+    local ret = Instance.new("TextButton"); ret.Size = UDim2.new(0, 52, 0, 32)
+    ret.Position = UDim2.new(1, -56, 0.5, -16); ret.BackgroundColor3 = Color3.fromRGB(16, 82, 36)
+    ret.Text = "↩ RET"; ret.Font = Enum.Font.BuilderSansBold; ret.TextSize = 11
+    ret.TextColor3 = Color3.fromRGB(178, 255, 198); ret.Parent = row
+    Instance.new("UICorner", ret).CornerRadius = UDim.new(0, 7)
+    Instance.new("UIStroke", ret).Color = Color3.fromRGB(38, 200, 78)
+    ret.MouseButton1Click:Connect(function() if retCB then retCB(p) end end)
+end
+
+-- ══════════════════════════════════════════════════════════
+--  FLOATING TELE PAD
+-- ══════════════════════════════════════════════════════════
+local TelePad = Instance.new("Frame"); TelePad.Name = "TelePad"
+TelePad.Size = UDim2.new(0, 258, 0, 450); TelePad.Position = UDim2.new(0.02, 0, 0.08, 0)
+TelePad.BackgroundColor3 = Color3.fromRGB(9, 4, 19); TelePad.BorderSizePixel = 0
+TelePad.Visible = false; TelePad.ClipsDescendants = true; TelePad.Parent = SG
+mkDrag(TelePad)
+Instance.new("UICorner", TelePad).CornerRadius = UDim.new(0, 11)
+local TPStr = Instance.new("UIStroke", TelePad); TPStr.Color = Color3.fromRGB(255, 0, 120); TPStr.Thickness = 1.9
+
+local TPHdr = Instance.new("TextLabel"); TPHdr.Size = UDim2.new(1, 0, 0, 32)
+TPHdr.BackgroundColor3 = Color3.fromRGB(36, 12, 58); TPHdr.Text = "⚡ TELE PAD V16"
+TPHdr.Font = Enum.Font.BuilderSansBold; TPHdr.TextSize = 13
+TPHdr.TextColor3 = Color3.fromRGB(255, 235, 255); TPHdr.Parent = TelePad
+
+local TeleSwitch = Instance.new("TextButton"); TeleSwitch.Size = UDim2.new(0, 56, 0, 28)
+TeleSwitch.Position = UDim2.new(1, -66, 0, 38); TeleSwitch.BackgroundColor3 = Color3.fromRGB(42, 20, 72)
+TeleSwitch.Text = ""; TeleSwitch.Parent = TelePad
+Instance.new("UICorner", TeleSwitch).CornerRadius = UDim.new(1, 0)
+local TSInd = Instance.new("Frame"); TSInd.Size = UDim2.new(0, 22, 0, 22)
+TSInd.Position = UDim2.new(0, 3, 0.5, -11); TSInd.BackgroundColor3 = Color3.fromRGB(140, 118, 162)
+TSInd.Parent = TeleSwitch; Instance.new("UICorner", TSInd).CornerRadius = UDim.new(1, 0)
+local TOnLbl = Instance.new("TextLabel"); TOnLbl.Size = UDim2.new(0.6, 0, 0, 28)
+TOnLbl.Position = UDim2.new(0, 10, 0, 38); TOnLbl.Text = "Kích Hoạt Tele:"
+TOnLbl.Font = Enum.Font.BuilderSansBold; TOnLbl.TextSize = 12
+TOnLbl.TextColor3 = Color3.fromRGB(240, 224, 255); TOnLbl.TextXAlignment = Enum.TextXAlignment.Left
+TOnLbl.BackgroundTransparency = 1; TOnLbl.Parent = TelePad
+
+TeleSwitch.MouseButton1Click:Connect(function()
+    S.TeleportActive = not S.TeleportActive; local on = S.TeleportActive
+    TweenService:Create(TeleSwitch, TweenInfo.new(0.14), {BackgroundColor3 = on and Color3.fromRGB(0, 215, 95) or Color3.fromRGB(42, 20, 72)}):Play()
+    TweenService:Create(TSInd, TweenInfo.new(0.14, Enum.EasingStyle.Back), {
+        Position = on and UDim2.new(1, -25, 0.5, -11) or UDim2.new(0, 3, 0.5, -11),
+        BackgroundColor3 = on and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(140, 118, 162)
+    }):Play()
+end)
+
+local modeNames = {"📌 Behind", "🔄 Orbit", "⬇ Under", "⬆ Up"}
+local modeBtns  = {}
+local function selectTeleMode(idx)
+    S.TeleMode = idx
+    for i, b in ipairs(modeBtns) do
+        if i == idx then
+            TweenService:Create(b, TweenInfo.new(0.14), {BackgroundColor3 = Color3.fromRGB(130, 28, 215)}):Play()
+            b.BackgroundTransparency = 0
+        else
+            TweenService:Create(b, TweenInfo.new(0.14), {BackgroundColor3 = Color3.fromRGB(28, 12, 50)}):Play()
+            b.BackgroundTransparency = 0.28
+        end
+    end
+end
+
+local modeGrid = Instance.new("Frame"); modeGrid.Size = UDim2.new(0, 238, 0, 76)
+modeGrid.Position = UDim2.new(0.5, -119, 0, 74); modeGrid.BackgroundTransparency = 1; modeGrid.Parent = TelePad
+local mLL = Instance.new("UIGridLayout", modeGrid)
+mLL.CellSize = UDim2.new(0, 114, 0, 34); mLL.CellPadding = UDim2.new(0, 8, 0, 6)
+mLL.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+for i, name in ipairs(modeNames) do
+    local b = Instance.new("TextButton"); b.BackgroundColor3 = Color3.fromRGB(28, 12, 50)
+    b.BackgroundTransparency = 0.28; b.Text = name
+    b.Font = Enum.Font.BuilderSansBold; b.TextSize = 11
+    b.TextColor3 = Color3.fromRGB(222, 202, 248); b.Parent = modeGrid
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+    Instance.new("UIStroke", b).Color = Color3.fromRGB(95, 32, 155)
+    modeBtns[i] = b
+    b.MouseButton1Click:Connect(function() selectTeleMode(i) end)
+end
+selectTeleMode(1)
+
+local ORow = Instance.new("Frame"); ORow.Size = UDim2.new(0, 238, 0, 30)
+ORow.Position = UDim2.new(0.5, -119, 0, 158); ORow.BackgroundTransparency = 1; ORow.Parent = TelePad
+local OLbl = Instance.new("TextLabel"); OLbl.Size = UDim2.new(0, 130, 1, 0); OLbl.BackgroundTransparency = 1
+OLbl.Text = "Orbit Speed: " .. S.OrbitSpeed; OLbl.Font = Enum.Font.BuilderSansBold; OLbl.TextSize = 11
+OLbl.TextColor3 = Color3.fromRGB(205, 198, 238); OLbl.TextXAlignment = Enum.TextXAlignment.Left; OLbl.Parent = ORow
+local OSU = Instance.new("TextButton"); OSU.Size = UDim2.new(0, 42, 0, 28); OSU.Position = UDim2.new(1,-42,0.5,-14)
+OSU.BackgroundColor3=Color3.fromRGB(68,30,110); OSU.Text="+"; OSU.Font=Enum.Font.BuilderSansBold
+OSU.TextColor3=Color3.fromRGB(255,255,255); OSU.Parent=ORow; Instance.new("UICorner",OSU).CornerRadius=UDim.new(0,6)
+local OSD = Instance.new("TextButton"); OSD.Size = UDim2.new(0, 42, 0, 28); OSD.Position = UDim2.new(1,-90,0.5,-14)
+OSD.BackgroundColor3=Color3.fromRGB(68,30,110); OSD.Text="-"; OSD.Font=Enum.Font.BuilderSansBold
+OSD.TextColor3=Color3.fromRGB(255,255,255); OSD.Parent=ORow; Instance.new("UICorner",OSD).CornerRadius=UDim.new(0,6)
+OSU.MouseButton1Click:Connect(function() S.OrbitSpeed=math.clamp(S.OrbitSpeed+1,1,40); OLbl.Text="Orbit Speed: "..S.OrbitSpeed end)
+OSD.MouseButton1Click:Connect(function() S.OrbitSpeed=math.clamp(S.OrbitSpeed-1,1,40); OLbl.Text="Orbit Speed: "..S.OrbitSpeed end)
+
+local TDiv = Instance.new("Frame"); TDiv.Size = UDim2.new(0, 238, 0, 1)
+TDiv.Position = UDim2.new(0.5, -119, 0, 196); TDiv.BackgroundColor3 = Color3.fromRGB(95, 28, 155)
+TDiv.BorderSizePixel = 0; TDiv.Parent = TelePad
+
+local TLHdr = Instance.new("TextLabel"); TLHdr.Size = UDim2.new(0, 158, 0, 24)
+TLHdr.Position = UDim2.new(0.5, -119, 0, 202); TLHdr.BackgroundTransparency = 1
+TLHdr.Text = "👥 Chọn mục tiêu Tele"; TLHdr.Font = Enum.Font.BuilderSansBold; TLHdr.TextSize = 11
+TLHdr.TextColor3 = Color3.fromRGB(220, 198, 245); TLHdr.TextXAlignment = Enum.TextXAlignment.Left; TLHdr.Parent = TelePad
+
+local TRefBtn = Instance.new("TextButton"); TRefBtn.Size = UDim2.new(0, 62, 0, 22)
+TRefBtn.Position = UDim2.new(1, -70, 0, 204); TRefBtn.BackgroundColor3 = Color3.fromRGB(48, 20, 90)
+TRefBtn.Text = "↻ Refresh"; TRefBtn.Font = Enum.Font.BuilderSansBold; TRefBtn.TextSize = 9
+TRefBtn.TextColor3 = Color3.fromRGB(200, 175, 242); TRefBtn.Parent = TelePad
+Instance.new("UICorner", TRefBtn).CornerRadius = UDim.new(0, 5)
+
+local TList = Instance.new("ScrollingFrame"); TList.Size = UDim2.new(0, 238, 0, 218)
+TList.Position = UDim2.new(0.5, -119, 0, 230); TList.BackgroundColor3 = Color3.fromRGB(11, 5, 22)
+TList.BorderSizePixel = 1; TList.CanvasSize = UDim2.new(0,0,0,0); TList.ScrollBarThickness = 4
+TList.Parent = TelePad
+Instance.new("UICorner", TList).CornerRadius = UDim.new(0, 7)
+Instance.new("UIStroke", TList).Color = Color3.fromRGB(75, 22, 128)
+Instance.new("UIListLayout", TList).Padding = UDim.new(0, 5)
+
+local function refreshTeleList()
+    for _, v in pairs(TList:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
+    local cnt = 0
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then
+            cnt = cnt + 1
+            mkPlayerRow(p, TList,
+                function(pl)
+                    S.TeleTarget = pl
+                    showNotif("📌 Tele target: " .. pl.DisplayName, Color3.fromRGB(180, 255, 220))
+                end,
+                function(pl)
+                    S.TeleTarget = nil; S.TeleportActive = false
+                    TweenService:Create(TeleSwitch,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(42,20,72)}):Play()
+                    TweenService:Create(TSInd,TweenInfo.new(0.12),{Position=UDim2.new(0,3,0.5,-11),BackgroundColor3=Color3.fromRGB(140,118,162)}):Play()
+                    showNotif("↩ Đã dừng Tele.", Color3.fromRGB(180, 255, 200))
+                end
+            )
+        end
+    end
+    TList.CanvasSize = UDim2.new(0, 0, 0, cnt * 52)
+end
+TRefBtn.MouseButton1Click:Connect(refreshTeleList)
+Players.PlayerAdded:Connect(function()   task.wait(1);   refreshTeleList() end)
+Players.PlayerRemoving:Connect(function() task.wait(0.2); refreshTeleList() end)
+
+-- ══════════════════════════════════════════════════════════
+--  FLOATING STAND PAD
+-- ══════════════════════════════════════════════════════════
+local StandPad = Instance.new("Frame"); StandPad.Name = "StandPad"
+StandPad.Size = UDim2.new(0, 258, 0, 478); StandPad.Position = UDim2.new(0.78, 0, 0.04, 0)
+StandPad.BackgroundColor3 = Color3.fromRGB(8, 4, 18); StandPad.BorderSizePixel = 0
+StandPad.Visible = false; StandPad.ClipsDescendants = false; StandPad.Parent = SG
+mkDrag(StandPad)
+Instance.new("UICorner", StandPad).CornerRadius = UDim.new(0, 11)
+local SPStr = Instance.new("UIStroke", StandPad); SPStr.Color = Color3.fromRGB(160, 38, 255); SPStr.Thickness = 1.9
+
+local _spH = 200
+RunService.Heartbeat:Connect(function(dt)
+    _spH = (_spH + dt * 38) % 360
+    SPStr.Color = Color3.fromHSV(_spH / 360, 0.88, 0.96)
+end)
+
+local SPHdr = Instance.new("TextLabel"); SPHdr.Size = UDim2.new(1, 0, 0, 32)
+SPHdr.BackgroundColor3 = Color3.fromRGB(26, 9, 46); SPHdr.Text = "🔯 STAND CONTROLLER V16"
+SPHdr.Font = Enum.Font.BuilderSansBold; SPHdr.TextSize = 12
+SPHdr.TextColor3 = Color3.fromRGB(248, 228, 255); SPHdr.Parent = StandPad
+
+SelectorBtn = Instance.new("TextButton"); SelectorBtn.Size = UDim2.new(0, 228, 0, 34)
+SelectorBtn.Position = UDim2.new(0.5, -114, 0, 40)
+SelectorBtn.BackgroundColor3 = Color3.fromRGB(20, 10, 38); SelectorBtn.Text = "Chọn Chủ Nhân (Master)..."
+SelectorBtn.Font = Enum.Font.BuilderSansBold; SelectorBtn.TextSize = 11
+SelectorBtn.TextColor3 = Color3.fromRGB(205, 172, 240); SelectorBtn.Parent = StandPad
+Instance.new("UICorner", SelectorBtn).CornerRadius = UDim.new(0, 7)
+Instance.new("UIStroke", SelectorBtn).Color = Color3.fromRGB(98, 32, 158)
+
+local MasterDrop = Instance.new("ScrollingFrame"); MasterDrop.Size = UDim2.new(0, 228, 0, 95)
+MasterDrop.Position = UDim2.new(0.5, -114, 0, 76); MasterDrop.BackgroundColor3 = Color3.fromRGB(16, 7, 28)
+MasterDrop.BorderSizePixel = 1; MasterDrop.CanvasSize = UDim2.new(0,0,0,0)
+MasterDrop.ScrollBarThickness = 4; MasterDrop.ZIndex = 20; MasterDrop.Visible = false; MasterDrop.Parent = StandPad
+Instance.new("UICorner", MasterDrop).CornerRadius = UDim.new(0, 5)
+Instance.new("UIListLayout", MasterDrop).Padding = UDim.new(0, 3)
+
+StatusLbl = Instance.new("TextLabel"); StatusLbl.Size = UDim2.new(0, 228, 0, 22)
+StatusLbl.Position = UDim2.new(0.5, -114, 0, 176)
+StatusLbl.BackgroundTransparency = 1; StatusLbl.Text = "Trạng thái: Chưa trao quyền"
+StatusLbl.Font = Enum.Font.BuilderSansBold; StatusLbl.TextSize = 11
+StatusLbl.TextColor3 = Color3.fromRGB(158, 145, 175); StatusLbl.Parent = StandPad
+
+local SDiv = Instance.new("Frame"); SDiv.Size = UDim2.new(0, 228, 0, 1)
+SDiv.Position = UDim2.new(0.5, -114, 0, 204); SDiv.BackgroundColor3 = Color3.fromRGB(88, 22, 148)
+SDiv.BorderSizePixel = 0; SDiv.Parent = StandPad
+
+local SLHdr = Instance.new("TextLabel"); SLHdr.Size = UDim2.new(0, 158, 0, 24)
+SLHdr.Position = UDim2.new(0.5, -114, 0, 210); SLHdr.BackgroundTransparency = 1
+SLHdr.Text = "👥 Danh sách người chơi"; SLHdr.Font = Enum.Font.BuilderSansBold; SLHdr.TextSize = 11
+SLHdr.TextColor3 = Color3.fromRGB(220, 198, 245); SLHdr.TextXAlignment = Enum.TextXAlignment.Left; SLHdr.Parent = StandPad
+
+local SRefBtn = Instance.new("TextButton"); SRefBtn.Size = UDim2.new(0, 62, 0, 22)
+SRefBtn.Position = UDim2.new(1, -70, 0, 212); SRefBtn.BackgroundColor3 = Color3.fromRGB(48, 20, 90)
+SRefBtn.Text = "↻ Refresh"; SRefBtn.Font = Enum.Font.BuilderSansBold; SRefBtn.TextSize = 9
+SRefBtn.TextColor3 = Color3.fromRGB(200, 175, 242); SRefBtn.Parent = StandPad
+Instance.new("UICorner", SRefBtn).CornerRadius = UDim.new(0, 5)
+
+local SList = Instance.new("ScrollingFrame"); SList.Size = UDim2.new(0, 228, 0, 198)
+SList.Position = UDim2.new(0.5, -114, 0, 238); SList.BackgroundColor3 = Color3.fromRGB(9, 4, 20)
+SList.BorderSizePixel = 1; SList.CanvasSize = UDim2.new(0,0,0,0); SList.ScrollBarThickness = 4
+SList.Parent = StandPad
+Instance.new("UICorner", SList).CornerRadius = UDim.new(0, 7)
+Instance.new("UIStroke", SList).Color = Color3.fromRGB(72, 20, 125)
+Instance.new("UIListLayout", SList).Padding = UDim.new(0, 5)
+
+local RevokeBtn = Instance.new("TextButton"); RevokeBtn.Size = UDim2.new(0, 228, 0, 32)
+RevokeBtn.Position = UDim2.new(0.5, -114, 0, 444); RevokeBtn.BackgroundColor3 = Color3.fromRGB(98, 13, 24)
+RevokeBtn.Text = "🔓 Hủy Chủ Nhân (Revoke)"; RevokeBtn.Font = Enum.Font.BuilderSansBold; RevokeBtn.TextSize = 11
+RevokeBtn.TextColor3 = Color3.fromRGB(255, 188, 200); RevokeBtn.Parent = StandPad
+Instance.new("UICorner", RevokeBtn).CornerRadius = UDim.new(0, 7)
+Instance.new("UIStroke", RevokeBtn).Color = Color3.fromRGB(218, 32, 52)
+RevokeBtn.MouseButton1Click:Connect(revokeMaster)
+
+local function refreshStandList()
+    for _, v in pairs(SList:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
+    local cnt = 0
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then
+            cnt = cnt + 1
+            mkPlayerRow(p, SList,
+                function(pl)
+                    if not S.StandEnabled then showNotif("❌ Bật Stand trước!", Color3.fromRGB(255,80,80)); return end
+                    task.spawn(function()
+                        local tChar = getCharSafe(pl)
+                        if tChar then
+                            S.KillTargetChar = tChar; S.StandState = "Assassinating"
+                            StatusLbl.Text = "⚔ Tấn công: " .. pl.DisplayName
+                            StatusLbl.TextColor3 = Color3.fromRGB(255, 78, 78)
+                            showNotif("⚔️ Tấn công: " .. pl.DisplayName, Color3.fromRGB(255, 100, 100))
+                        else
+                            showNotif("❌ " .. pl.Name .. " không có nhân vật.", Color3.fromRGB(255,80,80))
+                        end
+                    end)
+                end,
+                function(pl)
+                    local c = LP.Character
+                    if c then for _, pt in pairs(c:GetChildren()) do if pt:IsA("BasePart") then pt.CanCollide = true end end end
+                    S.StandState = "FollowMaster"; S.KillTargetChar = nil
+                    StatusLbl.Text = "Trạng thái: Đã ghim Stand"; StatusLbl.TextColor3 = Color3.fromRGB(0, 255, 160)
+                    showNotif("↩ [Stand] Về hộ vệ Chủ Nhân.", Color3.fromRGB(180, 255, 200))
+                end
+            )
+        end
+    end
+    SList.CanvasSize = UDim2.new(0, 0, 0, cnt * 52)
+end
+SRefBtn.MouseButton1Click:Connect(refreshStandList)
+Players.PlayerAdded:Connect(function()   task.wait(1);   refreshStandList() end)
+Players.PlayerRemoving:Connect(function() task.wait(0.2); refreshStandList() end)
+
+local function refreshMasterDrop()
+    for _, v in pairs(MasterDrop:GetChildren()) do if v:IsA("TextButton") then v:Destroy() end end
+    local cnt = 0
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then
+            cnt = cnt + 1
+            local b = Instance.new("TextButton"); b.Size = UDim2.new(1, 0, 0, 29)
+            b.BackgroundColor3 = Color3.fromRGB(30, 16, 48)
+            b.Text = p.DisplayName .. " (@" .. p.Name .. ")"
+            b.Font = Enum.Font.BuilderSansBold; b.TextSize = 10
+            b.TextColor3 = Color3.fromRGB(225, 210, 242); b.ZIndex = 21; b.Parent = MasterDrop
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+            b.MouseButton1Click:Connect(function()
+                S.MasterPlayer = p; SelectorBtn.Text = "Chủ Nhân: " .. p.Name
+                StatusLbl.Text = "Trạng thái: Đã ghim Stand"; StatusLbl.TextColor3 = Color3.fromRGB(0, 255, 160)
+                MasterDrop.Visible = false
+                showNotif("🔮 Kết nối Stand với [" .. p.DisplayName .. "]", Color3.fromRGB(180, 140, 255))
+                if ChatConn then ChatConn:Disconnect() end
+                ChatConn = p.Chatted:Connect(function(msg)
+                    if not S.StandEnabled then return end
+                    local raw = string.gsub(string.gsub(msg, "^%s+", ""), "%s+$", "")
+                    local lm  = string.lower(raw)
+                    if lm == "r" then
+                        S.StandState = "FollowMaster"; S.KillTargetChar = nil
+                        local c = LP.Character
+                        if c then for _, pt in pairs(c:GetChildren()) do if pt:IsA("BasePart") then pt.CanCollide = true end end end
+                        StatusLbl.Text = "Trạng thái: Đã ghim Stand"; StatusLbl.TextColor3 = Color3.fromRGB(0,255,160)
+                        showNotif("↩ r → Về hộ vệ!", Color3.fromRGB(180,255,200))
+                    elseif lm == "s" then
+                        S.StandState = "FollowMaster"; S.KillTargetChar = nil
+                        StatusLbl.Text = "Trạng thái: Đã ghim Stand"; StatusLbl.TextColor3 = Color3.fromRGB(0,255,160)
+                        showNotif("🔮 s → Triệu hồi!", Color3.fromRGB(180,140,255))
+                    else
+                        if #raw > 32 then return end
+                        local found = findPlayerBySearch(raw)
+                        if found then
+                            task.spawn(function()
+                                local tChar = getCharSafe(found)
+                                if tChar then
+                                    S.KillTargetChar = tChar; S.StandState = "Assassinating"
+                                    StatusLbl.Text = "⚔ Tấn công: " .. found.DisplayName
+                                    StatusLbl.TextColor3 = Color3.fromRGB(255, 78, 78)
+                                    showNotif("⚔️ Tấn công: " .. found.DisplayName, Color3.fromRGB(255,100,100))
+                                end
+                            end)
+                        end
+                    end
+                end)
+            end)
+        end
+    end
+    MasterDrop.CanvasSize = UDim2.new(0, 0, 0, cnt * 32)
+end
+SelectorBtn.MouseButton1Click:Connect(function()
+    MasterDrop.Visible = not MasterDrop.Visible
+    if MasterDrop.Visible then refreshMasterDrop() end
+end)
+
+-- ══════════════════════════════════════════════════════════
+--  TAB 1 — MAIN LOGIC
+-- ══════════════════════════════════════════════════════════
+mkToggle(TabMain, "Auto Đánh (Equip Tool)", function(st) S.AutoAttack = st end)
+task.spawn(function()
+    while true do task.wait()
+        if S.AutoAttack then
+            local c = LP.Character; local t = c and c:FindFirstChildOfClass("Tool")
+            if t then pcall(function() t:Activate() end) end
+        end
+    end
+end)
+
+mkToggle(TabMain, "Auto Heal Băng Gạc (≤80% HP)", function(st) S.AutoHeal = st end)
+task.spawn(function()
+    while true do task.wait(0.15)
+        if S.AutoHeal then
+            local c = LP.Character; local hum = c and c:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 and (hum.Health / hum.MaxHealth) <= 0.80 then
+                local bandage = findBandage()
+                if bandage then
+                    local remote = bandage:FindFirstChildOfClass("RemoteEvent") or bandage:FindFirstChild("Activated")
+                    if remote then pcall(function() remote:FireServer() end)
+                    else
+                        local prev = c:FindFirstChildOfClass("Tool"); local held = (bandage.Parent == c)
+                        if not held then pcall(function() hum:EquipTool(bandage) end); task.wait(0.05) end
+                        pcall(function() bandage:Activate() end); task.wait(0.05)
+                        if not held and prev and prev.Parent then pcall(function() hum:EquipTool(prev) end) end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+local SpinFrame = Instance.new("Frame"); SpinFrame.Size = UDim2.new(0.93, 0, 0, 54)
+SpinFrame.BackgroundColor3 = Color3.fromRGB(14, 7, 26); SpinFrame.BackgroundTransparency = 0.42
+SpinFrame.ZIndex = 2; SpinFrame.Parent = TabMain
+Instance.new("UICorner", SpinFrame).CornerRadius = UDim.new(0, 10)
+local SpinTS = Instance.new("UIStroke", SpinFrame); SpinTS.Color = Color3.fromRGB(75, 22, 115); SpinTS.Thickness = 1.1
+local SpinLbl = Instance.new("TextLabel"); SpinLbl.Size = UDim2.new(0.55, 0, 0, 28)
+SpinLbl.Position = UDim2.new(0, 14, 0, 7); SpinLbl.Text = "Spinbot (Tool Only): " .. S.SpinSpeed
+SpinLbl.Font = Enum.Font.BuilderSansBold; SpinLbl.TextSize = 12
+SpinLbl.TextColor3 = Color3.fromRGB(240, 224, 255); SpinLbl.TextXAlignment = Enum.TextXAlignment.Left
+SpinLbl.BackgroundTransparency = 1; SpinLbl.ZIndex = 3; SpinLbl.Parent = SpinFrame
+
+local SpinToggle = Instance.new("TextButton"); SpinToggle.Size = UDim2.new(0, 56, 0, 28)
+SpinToggle.Position = UDim2.new(1, -68, 0, 7); SpinToggle.BackgroundColor3 = Color3.fromRGB(42, 26, 68)
+SpinToggle.Text = ""; SpinToggle.ZIndex = 3; SpinToggle.Parent = SpinFrame
+Instance.new("UICorner", SpinToggle).CornerRadius = UDim.new(1, 0)
+local SpinInd = Instance.new("Frame"); SpinInd.Size = UDim2.new(0, 22, 0, 22)
+SpinInd.Position = UDim2.new(0, 3, 0.5, -11); SpinInd.BackgroundColor3 = Color3.fromRGB(135, 115, 165)
+SpinInd.ZIndex = 4; SpinInd.Parent = SpinToggle; Instance.new("UICorner", SpinInd).CornerRadius = UDim.new(1, 0)
+
+SpinToggle.MouseButton1Click:Connect(function()
+    S.SpinbotEnabled = not S.SpinbotEnabled; local on = S.SpinbotEnabled
+    TweenService:Create(SpinToggle, TweenInfo.new(0.15, Enum.EasingStyle.Back), {BackgroundColor3 = on and Color3.fromRGB(135,28,245) or Color3.fromRGB(42,26,68)}):Play()
+    TweenService:Create(SpinInd,   TweenInfo.new(0.15, Enum.EasingStyle.Back), {Position = on and UDim2.new(1,-25,0.5,-11) or UDim2.new(0,3,0.5,-11), BackgroundColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(135,115,165)}):Play()
+    TweenService:Create(SpinTS, TweenInfo.new(0.15), {Color = on and Color3.fromRGB(180,55,255) or Color3.fromRGB(75,22,115)}):Play()
+end)
+
+local SSU = Instance.new("TextButton"); SSU.Size = UDim2.new(0,44,0,26); SSU.Position = UDim2.new(1,-62,0,24)
+SSU.BackgroundColor3=Color3.fromRGB(65,28,100); SSU.Text="+"; SSU.Font=Enum.Font.BuilderSansBold; SSU.TextColor3=Color3.fromRGB(255,255,255); SSU.ZIndex=3; SSU.Parent=SpinFrame; Instance.new("UICorner",SSU).CornerRadius=UDim.new(0,6)
+local SSD = Instance.new("TextButton"); SSD.Size = UDim2.new(0,44,0,26); SSD.Position = UDim2.new(1,-112,0,24)
+SSD.BackgroundColor3=Color3.fromRGB(65,28,100); SSD.Text="-"; SSD.Font=Enum.Font.BuilderSansBold; SSD.TextColor3=Color3.fromRGB(255,255,255); SSD.ZIndex=3; SSD.Parent=SpinFrame; Instance.new("UICorner",SSD).CornerRadius=UDim.new(0,6)
+SSU.MouseButton1Click:Connect(function() S.SpinSpeed=math.clamp(S.SpinSpeed+5,5,150); SpinLbl.Text="Spinbot (Tool Only): "..S.SpinSpeed end)
+SSD.MouseButton1Click:Connect(function() S.SpinSpeed=math.clamp(S.SpinSpeed-5,5,150); SpinLbl.Text="Spinbot (Tool Only): "..S.SpinSpeed end)
+
+RunService.Heartbeat:Connect(function()
+    if S.SpinbotEnabled then
+        local c = LP.Character
+        if c and c:FindFirstChildOfClass("Tool") then
+            local hrp = c:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(S.SpinSpeed), 0) end
+        end
+    end
+end)
+
+-- HITBOX EXPANDER SYSTEM (ADD ON MAIN LOGIC)
+local HitboxFrame = Instance.new("Frame"); HitboxFrame.Size = UDim2.new(0.93, 0, 0, 54)
+HitboxFrame.BackgroundColor3 = Color3.fromRGB(14, 7, 26); HitboxFrame.BackgroundTransparency = 0.42
+HitboxFrame.ZIndex = 2; HitboxFrame.Parent = TabMain
+Instance.new("UICorner", HitboxFrame).CornerRadius = UDim.new(0, 10)
+local HitboxTS = Instance.new("UIStroke", HitboxFrame); HitboxTS.Color = Color3.fromRGB(75, 22, 115); HitboxTS.Thickness = 1.1
+local HitboxLbl = Instance.new("TextLabel"); HitboxLbl.Size = UDim2.new(0.55, 0, 0, 28)
+HitboxLbl.Position = UDim2.new(0, 14, 0, 7); HitboxLbl.Text = "Hitbox Expander: " .. S.HitboxSize
+HitboxLbl.Font = Enum.Font.BuilderSansBold; HitboxLbl.TextSize = 12
+HitboxLbl.TextColor3 = Color3.fromRGB(240, 224, 255); HitboxLbl.TextXAlignment = Enum.TextXAlignment.Left
+HitboxLbl.BackgroundTransparency = 1; HitboxLbl.ZIndex = 3; HitboxFrame.Parent = TabMain; HitboxLbl.Parent = HitboxFrame
+
+local HitboxToggle = Instance.new("TextButton"); HitboxToggle.Size = UDim2.new(0, 56, 0, 28)
+HitboxToggle.Position = UDim2.new(1, -68, 0, 7); HitboxToggle.BackgroundColor3 = Color3.fromRGB(42, 26, 68)
+HitboxToggle.Text = ""; HitboxToggle.ZIndex = 3; HitboxToggle.Parent = HitboxFrame
+Instance.new("UICorner", HitboxToggle).CornerRadius = UDim.new(1, 0)
+local HitboxInd = Instance.new("Frame"); HitboxInd.Size = UDim2.new(0, 22, 0, 22)
+HitboxInd.Position = UDim2.new(0, 3, 0.5, -11); HitboxInd.BackgroundColor3 = Color3.fromRGB(135, 115, 165)
+HitboxInd.ZIndex = 4; HitboxInd.Parent = HitboxToggle; Instance.new("UICorner", HitboxInd).CornerRadius = UDim.new(1, 0)
+
+HitboxToggle.MouseButton1Click:Connect(function()
+    S.HitboxEnabled = not S.HitboxEnabled; local on = S.HitboxEnabled
+    TweenService:Create(HitboxToggle, TweenInfo.new(0.15, Enum.EasingStyle.Back), {BackgroundColor3 = on and Color3.fromRGB(135,28,245) or Color3.fromRGB(42,26,68)}):Play()
+    TweenService:Create(HitboxInd,   TweenInfo.new(0.15, Enum.EasingStyle.Back), {Position = on and UDim2.new(1,-25,0.5,-11) or UDim2.new(0,3,0.5,-11), BackgroundColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(135,115,165)}):Play()
+    TweenService:Create(HitboxTS, TweenInfo.new(0.15), {Color = on and Color3.fromRGB(180,55,255) or Color3.fromRGB(75,22,115)}):Play()
+    if not on then
+        updateHitboxes()
+    end
+end)
+
+local HSU = Instance.new("TextButton"); HSU.Size = UDim2.new(0,44,0,26); HSU.Position = UDim2.new(1,-62,0,24)
+HSU.BackgroundColor3=Color3.fromRGB(65,28,100); HSU.Text="+"; HSU.Font=Enum.Font.BuilderSansBold; HSU.TextColor3=Color3.fromRGB(255,255,255); HSU.ZIndex=3; HSU.Parent=HitboxFrame; Instance.new("UICorner",HSU).CornerRadius=UDim.new(0,6)
+local HSD = Instance.new("TextButton"); HSD.Size = UDim2.new(0,44,0,26); HSD.Position = UDim2.new(1,-112,0,24)
+HSD.BackgroundColor3=Color3.fromRGB(65,28,100); HSD.Text="-"; HSD.Font=Enum.Font.BuilderSansBold; HSD.TextColor3=Color3.fromRGB(255,255,255); HSD.ZIndex=3; HSD.Parent=HitboxFrame; Instance.new("UICorner",HSD).CornerRadius=UDim.new(0,6)
+HSU.MouseButton1Click:Connect(function() S.HitboxSize=math.clamp(S.HitboxSize+2,2,50); HitboxLbl.Text="Hitbox Expander: "..S.HitboxSize end)
+HSD.MouseButton1Click:Connect(function() S.HitboxSize=math.clamp(S.HitboxSize-2,2,50); HitboxLbl.Text="Hitbox Expander: "..S.HitboxSize end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.C then
+        S.HitboxEnabled = not S.HitboxEnabled; local on = S.HitboxEnabled
+        TweenService:Create(HitboxToggle, TweenInfo.new(0.15, Enum.EasingStyle.Back), {BackgroundColor3 = on and Color3.fromRGB(135,28,245) or Color3.fromRGB(42,26,68)}):Play()
+        TweenService:Create(HitboxInd,   TweenInfo.new(0.15, Enum.EasingStyle.Back), {Position = on and UDim2.new(1,-25,0.5,-11) or UDim2.new(0,3,0.5,-11), BackgroundColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(135,115,165)}):Play()
+        TweenService:Create(HitboxTS, TweenInfo.new(0.15), {Color = on and Color3.fromRGB(180,55,255) or Color3.fromRGB(75,22,115)}):Play()
+        if not on then
+            updateHitboxes()
+        end
+    end
+end)
+
+mkToggle(TabMain, "💀 Siêu Hủy Đồ Họa (Max FPS)", function(state)
+    S.UltraAntiLag = state
+    if state then
+        Lighting.GlobalShadows = false; Lighting.FogEnd = 1e9
+        Lighting.Brightness = 0; Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("PostEffect") or v:IsA("Sky") or v:IsA("Atmosphere")
+            or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("Clouds")
+            or v:IsA("ColorCorrectionEffect") or v:IsA("DepthOfFieldEffect") or v:IsA("BloomEffect") then
+                v.Parent = game:GetService("TestService")
+            end
+        end
+        local myC = LP.Character
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if not (myC and obj:IsDescendantOf(myC)) then
+                if obj:IsA("BasePart") then
+                    obj.Material = Enum.Material.SmoothPlastic; obj.CastShadow = false
+                    obj.Reflectance = 0; obj.TopSurface = Enum.SurfaceType.Smooth; obj.BottomSurface = Enum.SurfaceType.Smooth
+                elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                    pcall(function() obj.Parent = game:GetService("TestService") end)
+                elseif obj:IsA("SpecialMesh") then
+                    obj.TextureId = ""
+                elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                    obj.Enabled = false; if obj:IsA("ParticleEmitter") then obj:Clear() end
+                elseif obj:IsA("Trail") or obj:IsA("Beam") then
+                    obj.Enabled = false
+                elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                    obj.Enabled = false
+                elseif obj:IsA("Sound") then
+                    obj.Volume = 0
+                elseif obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment") then
+                    obj.SurfaceTransparency = 1
+                end
+            end
+        end
+        showNotif("💀 Đã hủy TOÀN BỘ đồ họa!", Color3.fromRGB(255, 75, 75))
+    else
+        Lighting.GlobalShadows = true; Lighting.Brightness = 2
+        for _, v in pairs(game:GetService("TestService"):GetChildren()) do
+            pcall(function() v.Parent = Lighting end)
+        end
+        for _, obj in pairs(workspace:GetDescendants()) do
+            local myC = LP.Character
+            if not (myC and obj:IsDescendantOf(myC)) then
+                if obj:IsA("BasePart") then obj.Material = Enum.Material.Plastic; obj.CastShadow = true end
+                if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then obj.Enabled = true end
+                if obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then obj.Enabled = true end
+            end
+        end
+        showNotif("✅ Đã khôi phục đồ họa.", Color3.fromRGB(180, 255, 200))
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════
+--  TAB 2 — ESP
+-- ══════════════════════════════════════════════════════════
+mkToggle(TabESP, "ESP Name", function(st) S.ESPName = st end)
+mkToggle(TabESP, "ESP Health Bar", function(st) S.ESPHealth = st end)
+mkToggle(TabESP, "ESP Wallhack Xuyên Tường", function(st)
+    S.ESPHighlight = st
+    if not st then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character and p.Character:FindFirstChild("CDVN_HL") then p.Character["CDVN_HL"]:Destroy() end
+        end
+    end
+end)
+
+local AESP = {}
+local function mkESPElem(p)
+    if AESP[p] then return end
+    local nl = Instance.new("TextLabel"); nl.Size = UDim2.new(0, 200, 0, 20); nl.BackgroundTransparency = 1
+    nl.Font = Enum.Font.BuilderSansBold; nl.TextSize = 13; nl.TextColor3 = Color3.fromRGB(255,255,255)
+    nl.TextStrokeTransparency = 0.3; nl.Visible = false; nl.Parent = SG
+    local hbg = Instance.new("Frame"); hbg.Size = UDim2.new(0, 64, 0, 6); hbg.BackgroundColor3 = Color3.fromRGB(28,0,6)
+    hbg.BorderSizePixel = 0; hbg.Visible = false; hbg.Parent = SG
+    Instance.new("UICorner", hbg).CornerRadius = UDim.new(1, 0)
+    local hf = Instance.new("Frame"); hf.Size = UDim2.new(1,0,1,0); hf.BackgroundColor3 = Color3.fromRGB(0,255,120)
+    hf.BorderSizePixel = 0; hf.Parent = hbg; Instance.new("UICorner", hf).CornerRadius = UDim.new(1, 0)
+    AESP[p] = {N = nl, HB = hbg, HF = hf}
+end
+local function cleanESP(p)
+    if AESP[p] then AESP[p].N:Destroy(); AESP[p].HB:Destroy(); AESP[p] = nil end
+    if p.Character and p.Character:FindFirstChild("CDVN_HL") then p.Character["CDVN_HL"]:Destroy() end
+end
+Players.PlayerRemoving:Connect(cleanESP)
+
+RunService.RenderStepped:Connect(function()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then
+            mkESPElem(p); local d = AESP[p]; local c = p.Character
+            local head = c and c:FindFirstChild("Head"); local hum = c and c:FindFirstChildOfClass("Humanoid")
+            if head and hum and hum.Health > 0 then
+                if S.ESPHighlight and not c:FindFirstChild("CDVN_HL") then
+                    local hl = Instance.new("Highlight"); hl.Name = "CDVN_HL"
+                    hl.FillColor = Color3.fromRGB(170,42,255); hl.FillTransparency = 0.5
+                    hl.OutlineColor = Color3.fromRGB(255,255,255); hl.OutlineTransparency = 0
+                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; hl.Parent = c
+                elseif not S.ESPHighlight and c:FindFirstChild("CDVN_HL") then c["CDVN_HL"]:Destroy() end
+                local v, on = Camera:WorldToViewportPoint(head.Position)
+                if on then
+                    if S.ESPName then d.N.Text = p.DisplayName; d.N.Position = UDim2.new(0,v.X-100,0,v.Y-34); d.N.Visible = true else d.N.Visible = false end
+                    if S.ESPHealth then
+                        local pct = math.clamp(hum.Health/hum.MaxHealth,0,1)
+                        d.HF.Size = UDim2.new(pct,0,1,0); d.HF.BackgroundColor3 = Color3.fromHSV(pct*0.35,1,1)
+                        d.HB.Position = UDim2.new(0,v.X-32,0,v.Y-10); d.HB.Visible = true
+                    else d.HB.Visible = false end
+                else d.N.Visible = false; d.HB.Visible = false end
+            else
+                if d then d.N.Visible = false; d.HB.Visible = false end
+                if c and c:FindFirstChild("CDVN_HL") then c["CDVN_HL"]:Destroy() end
+            end
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════
+--  TAB 3 — TACTICAL
+-- ══════════════════════════════════════════════════════════
+mkToggle(TabTac, "⚡ Bật Laser Tele Pad", function(state)
+    S.LaserLockEnabled = state; TelePad.Visible = state
+    if state then task.wait(0.1); refreshTeleList() end
+    if not state then S.TeleportActive = false; S.TeleTarget = nil end
+end)
+mkToggle(TabTac, "🔯 Kích Hoạt Stand (JoJo Mode)", function(state)
+    S.StandEnabled = state; StandPad.Visible = state
+    if state then task.wait(0.1); refreshStandList() else revokeMaster() end
+end)
+
+-- ══════════════════════════════════════════════════════════
+--  MAIN HEARTBEAT
+-- ══════════════════════════════════════════════════════════
+RunService.Heartbeat:Connect(function(dt)
+
+    if S.TeleportActive and S.TeleTarget then
+        local myC   = LP.Character
+        local myHrp = myC and myC:FindFirstChild("HumanoidRootPart")
+        local tC    = S.TeleTarget.Character or workspace:FindFirstChild(S.TeleTarget.Name)
+        local tHrp  = tC and tC:FindFirstChild("HumanoidRootPart")
+        if myHrp and tHrp then
+            local tp = tHrp.Position
+            if S.TeleMode == 1 then
+                myHrp.CFrame = CFrame.new((tHrp.CFrame * CFrame.new(0,0,3.5)).Position, tp)
+            elseif S.TeleMode == 2 then
+                OrbitAngle = OrbitAngle + (S.OrbitSpeed * dt)
+                if OrbitAngle > math.pi*2 then OrbitAngle = 0 end
+                myHrp.CFrame = CFrame.new(tp + Vector3.new(math.cos(OrbitAngle)*S.OrbitRadius, 0, math.sin(OrbitAngle)*S.OrbitRadius), tp)
+            elseif S.TeleMode == 3 then
+                myHrp.CFrame = CFrame.new(tp + Vector3.new(0, -3.2, 0), tp)
+            elseif S.TeleMode == 4 then
+                myHrp.CFrame = CFrame.new(tp + Vector3.new(0, 5.5, 0), tp)
+            end
+            myHrp.Velocity = Vector3.new(0, 0, 0)
+        end
+    end
+
+    if S.StandEnabled and S.MasterPlayer then
+        local myC   = LP.Character
+        local myHrp = myC and myC:FindFirstChild("HumanoidRootPart")
+        local myHum = myC and myC:FindFirstChildOfClass("Humanoid")
+        local mC    = S.MasterPlayer.Character or workspace:FindFirstChild(S.MasterPlayer.Name)
+        local mHrp  = mC and mC:FindFirstChild("HumanoidRootPart")
+
+        if myHrp and myHum and myHum.Health > 0 then
+            if S.StandState == "FollowMaster" and mHrp then
+                local behind = mHrp.CFrame * CFrame.new(0, 0, 3.8)
+                myHrp.CFrame   = CFrame.new(behind.Position, mHrp.Position)
+                myHrp.Velocity = Vector3.new(0, 0, 0)
+
+            elseif S.StandState == "Assassinating" and S.KillTargetChar then
+                local tM = S.KillTargetChar
+                if not tM.Parent or not tM:FindFirstChild("HumanoidRootPart") then
+                    tM = workspace:FindFirstChild(S.KillTargetChar.Name)
+                    if tM then S.KillTargetChar = tM end
+                end
+                local kHrp = tM and tM:FindFirstChild("HumanoidRootPart")
+                local kHum = tM and tM:FindFirstChildOfClass("Humanoid")
+
+                if kHrp and kHum and kHum.Health > 0 then
+                    for _, pt in pairs(myC:GetChildren()) do if pt:IsA("BasePart") then pt.CanCollide = false end end
+                    StandOrbitAngle = StandOrbitAngle + (S.OrbitSpeed * dt)
+                    if StandOrbitAngle > math.pi*2 then StandOrbitAngle = 0 end
+                    local op = kHrp.Position + Vector3.new(math.cos(StandOrbitAngle)*S.OrbitRadius, 0, math.sin(StandOrbitAngle)*S.OrbitRadius)
+                    myHrp.CFrame      = CFrame.new(op, kHrp.Position)
+                    myHrp.Velocity    = Vector3.new(0, 0, 0)
+                    myHrp.RotVelocity = Vector3.new(0, 0, 0)
+                    local tool = myC:FindFirstChildOfClass("Tool") or LP.Backpack:FindFirstChildOfClass("Tool")
+                    if tool then
+                        if tool.Parent ~= myC then pcall(function() myHum:EquipTool(tool) end)
+                        else pcall(function() tool:Activate() end) end
+                    end
+                else
+                    for _, pt in pairs(myC:GetChildren()) do if pt:IsA("BasePart") then pt.CanCollide = true end end
+                    S.StandState = "FollowMaster"; S.KillTargetChar = nil
+                    StatusLbl.Text = "Trạng thái: Đã ghim Stand"; StatusLbl.TextColor3 = Color3.fromRGB(0, 255, 160)
+                    showNotif("🔮 Kẻ địch đã gục! Về hộ vệ Chủ Nhân.", Color3.fromRGB(180, 140, 255))
+                end
+            end
+        end
+    end
+end)
+
+-- ── ANTI-AFK ───────────────────────────────────────────────
+task.spawn(function()
+    LP.Idled:Connect(function()
+        local vu = game:GetService("VirtualUser"); vu:CaptureController(); vu:ClickButton2(Vector2.new(0,0))
+    end)
+end)
+
+-- ── KEYBIND ────────────────────────────────────────────────
+UserInputService.InputBegan:Connect(function(inp, processed)
+    if not processed and inp.KeyCode == Enum.KeyCode.RightControl then
+        MM.Visible = not MM.Visible
+    end
+end)
+
+print("🔯 [ThaianDev CDVN | Premium V16] Loaded — 4-mode Tele | Tool-Spin | Ultra Lag Kill | Animated UI")
+
